@@ -20,7 +20,7 @@ class BaseModel(p.Model):
 class User(BaseModel):
     identifier = p.CharField(unique=True)
     name = p.CharField(unique=True)
-    avatar = p.TextField()
+    avatar = p.TextField(null=True)
     raw = p.TextField()
 
     @property
@@ -68,7 +68,7 @@ class Im(BaseModel):
 
 class Message(BaseModel):
     type = p.CharField()
-    user = p.ForeignKeyField(User)
+    user = p.ForeignKeyField(User, null=True)
     text = p.TextField(null=True)
     timestamp = p.DateTimeField()
     raw = p.TextField()
