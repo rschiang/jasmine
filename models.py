@@ -40,7 +40,7 @@ class Group(BaseModel):
 
     @property
     def users(self):
-        return User.select().join(UserGroup).where(UserGroup.group == self)
+        return User.select().join(UserGroup).where(UserGroup.channel == self)
 
     @property
     def messages(self):
@@ -72,16 +72,16 @@ class UserChannel(BaseModel):
 
 class UserGroup(BaseModel):
     user = p.ForeignKeyField(User)
-    group = p.ForeignKeyField(Group)
+    channel = p.ForeignKeyField(Group)
 
 class ChannelMessage(BaseModel):
     channel = p.ForeignKeyField(Channel)
     message = p.ForeignKeyField(Message, unique=True)
 
 class GroupMessage(BaseModel):
-    group = p.ForeignKeyField(Group)
+    channel = p.ForeignKeyField(Group)
     message = p.ForeignKeyField(Message, unique=True)
 
 class ImMessage(BaseModel):
-    im = p.ForeignKeyField(Im)
+    channel = p.ForeignKeyField(Im)
     message = p.ForeignKeyField(Message, unique=True)

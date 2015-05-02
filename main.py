@@ -17,6 +17,20 @@ def update_users():
         user.raw = json.dumps(member)
         user.save()
 
+def update_channel_users(channel, users, all_users, rel_class):
+    users = set(users)
+    to_delete = []
+    for rel in rel_class.select().join(m.User).where(rel_class.channel == channel):
+        if rel.user.identifier not in users:
+            to_delete.append(rel)
+        else:
+            users.remove(rel.user.identifier)
+
+    for i in to_delete:
+        i.delete_instance()
+
+    rel_class.insert_many([{'user': users[i], 'channel': channel} for i in users])
+
 def update_channels():
     users = { u.identifier : u for u in m.User.select() }
     channels = slack.channels.list().body['channels']
@@ -28,19 +42,7 @@ def update_channels():
         channel.name = raw_channel['name']
         channel.raw = json.dumps(raw_channel)
         channel.save()
-
-        to_remove = []
-        users = set(raw_channel['members'])
-        for user_channel in m.UserChannel.select().join(m.User).where(m.UserChannel.channel == channel):
-            if user_channel.user.identifier not in users:
-                to_remove.append(user_channel)
-            else:
-                users.remove(user_channel.user.identifier)
-
-        for i in to_remove:
-            i.delete_instance()
-
-        m.UserChannel.insert_many([{'user': users[i], 'channel': channel} for i in users])
+        update_channel_users(channel, raw_channel['members'], users, m.UserChannel)
 
 def get_messages(channel, count=None):
     has_more = True
