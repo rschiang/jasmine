@@ -18,8 +18,8 @@ def update_users():
         user.save()
 
 def update_channels():
-    channels = slack.channels.list().body['channels']
     users = { u.identifier : u for u in m.User.select() }
+    channels = slack.channels.list().body['channels']
     for raw_channel in channels:
         try:
             channel = m.Channel.get(m.Channel.identifier == raw_channel['id'])
@@ -29,6 +29,25 @@ def update_channels():
         channel.raw = json.dumps(raw_channel)
         channel.save()
 
-        current_users = [u.identifier for u in m.User.select().join(m.UserChannel).where(m.UserChannel.channel == channel)]
-        m.UserChannel.insert_many([{'user': users[i], 'channel': channel} for i in raw_channel['members'] if i not in current_users])
-        m.UserChannel.delete().join(m.User).where(m.User.identifier << set(current_users).difference(raw_channel['members']))
+        to_remove = []
+        users = set(raw_channel['members'])
+        for user_channel in m.UserChannel.select().join(m.User).where(m.UserChannel.channel == channel):
+            if user_channel.user.identifier not in users:
+                to_remove.append(user_channel)
+            else:
+                users.remove(user_channel.user.identifier)
+
+        for i in to_remove:
+            i.delete_instance()
+
+        m.UserChannel.insert_many([{'user': users[i], 'channel': channel} for i in users])
+
+def get_messages(channel, count=None):
+    has_more = True
+    latest = None
+    while has_more:
+        response = slack.channels.history(channel=channel, count=count, latest=latest).body
+        has_more = response['has_more']
+        latest = response['latest']
+        for message in response['messages']:
+            yield message
