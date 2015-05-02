@@ -21,7 +21,6 @@ def update_users():
         user.save()
 
 def update_channel_users(channel, users, all_users, rel_class):
-    users = set(users)
     to_delete = []
     for rel in rel_class.select().join(m.User).where(rel_class.channel == channel):
         if rel.user.identifier not in users:
@@ -32,7 +31,7 @@ def update_channel_users(channel, users, all_users, rel_class):
     for i in to_delete:
         i.delete_instance()
 
-    rel_class.insert_many([{'user': all_users[i], 'channel': channel} for i in users])
+    rel_class.insert_many([{'user': all_users[i], 'channel': channel} for i in users]).execute()
 
 def update_channels():
     users = get_users()
@@ -50,11 +49,29 @@ def update_channels():
 def get_users():
     return { u.identifier : u for u in m.User.select() }
 
+def update_groups():
+    users = get_users()
+    groups = slack.groups.list().body['groups']
+    for raw_channel in groups:
+        try:
+            channel = m.Group.get(m.Group.identifier == raw_channel['id'])
+        except m.Group.DoesNotExist:
+            channel = m.Group(identifier=raw_channel['id'])
+        channel.name = raw_channel['name']
+        channel.raw = json.dumps(raw_channel, ensure_ascii=False)
+        channel.save()
+        update_channel_users(channel, raw_channel['members'], users, m.UserGroup)
+
 def get_messages(channel, count=None):
     has_more = True
     latest = None
+    if isinstance(channel, m.Channel):
+        fetch_func = slack.channels.history
+    elif isinstance(channel, m.Group):
+        fetch_func = slack.groups.history
+
     while has_more:
-        response = slack.channels.history(channel=channel.identifier, count=count, latest=latest).body
+        response = fetch_func(channel=channel.identifier, count=count, latest=latest).body
         has_more = response['has_more']
         messages = sorted(response['messages'], key=lambda x: x['ts'], reverse=True)
         for message in messages:
@@ -63,6 +80,11 @@ def get_messages(channel, count=None):
 
 def update_messages(channel):
     users = get_users()
+    if isinstance(channel, m.Channel):
+        rel_class = m.ChannelMessage
+    elif isinstance(channel, m.Group):
+        rel_class = m.GroupMessage
+
     for raw_message in get_messages(channel, count=400):
         try:
             message = m.Message(type=raw_message['type'])
@@ -76,7 +98,7 @@ def update_messages(channel):
             message.timestamp = datetime.fromtimestamp(float(raw_message['ts']))
             message.raw = json.dumps(raw_message, ensure_ascii=False)
             message.save()
-            m.ChannelMessage.create(channel=channel, message=message)
+            rel_class.create(channel=channel, message=message)
         except KeyError:
             print('⚠️ In channel {}'.format(channel.name))
             pprint(raw_message)
@@ -87,3 +109,8 @@ def update_all_messages():
     # update_channels()
     for channel in m.Channel.select():
         update_messages(channel)
+
+def update_group_messages():
+    update_groups()
+    for group in m.Group.select():
+        update_groups(group)
