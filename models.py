@@ -6,6 +6,10 @@ def init():
     db.connect()
     for model in [User, Channel, Group, Im, Message, UserChannel, UserGroup, ChannelMessage, GroupMessage, ImMessage]:
         model.create_table(fail_silently=True)
+    # Create Slackbot user
+    User.create(id=0, identifier='USLACKBOT', name='slackbot',
+        avatar='https://slack-assets2.s3-us-west-2.amazonaws.com/10068/img/slackbot_192.png',
+        raw=r'{"is_bot": true}')
 
 # Common model definition
 class BaseModel(p.Model):

@@ -3,8 +3,10 @@ import settings
 import models as m
 import json
 from datetime import datetime
+from pprint import PrettyPrinter
 
 slack = slacker.Slacker(settings.SLACK_TOKEN)
+pprint = PrettyPrinter().pprint
 
 def update_users():
     members = slack.users.list().body['members']
@@ -62,15 +64,24 @@ def get_messages(channel, count=None):
 def update_messages(channel):
     users = get_users()
     for raw_message in get_messages(channel, count=400):
-        message = m.Message(type=raw_message['type'])
-        message.user = users[raw_message['user']]
-        message.text = raw_message['text']
-        message.timestamp = datetime.fromtimestamp(raw_message['ts'])
-        message.raw = json.dumps(raw_message, ensure_ascii=False)
-        m.ChannelMessage.create(channel=channel, message=message)
+        try:
+            message = m.Message(type=raw_message['type'])
+            if 'user' in raw_message:
+                message.user = users[raw_message['user']]
+            else:
+                message.user = users[raw_message['comment']['user']]
+            message.text = raw_message['text']
+            message.timestamp = datetime.fromtimestamp(float(raw_message['ts']))
+            message.raw = json.dumps(raw_message, ensure_ascii=False)
+            message.save()
+            m.ChannelMessage.create(channel=channel, message=message)
+        except KeyError:
+            print('⚠️ In channel {}'.format(channel.name))
+            pprint(raw_message)
+            break
 
 def update_all_messages():
-    update_users()
-    update_channels()
+    # update_users()
+    # update_channels()
     for channel in m.Channel.select():
         update_messages(channel)
