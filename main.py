@@ -68,8 +68,18 @@ def update_messages(channel):
             message = m.Message(type=raw_message['type'])
             if 'user' in raw_message:
                 message.user = users[raw_message['user']]
-            else:
+            elif 'comment' in raw_message:
                 message.user = users[raw_message['comment']['user']]
+            else:
+                bot_id = raw_message['bot_id']
+                try:
+                    message.user = users[bot_id]
+                except KeyError:
+                    user = m.User.create(identifier=bot_id, name='(Bot)',
+                        avatar=settings.DEFAULT_BOT_AVATAR,
+                        raw=r'{"is_bot": true}')
+                    users[bot_id] = user
+                    message.user = user
             message.text = raw_message['text']
             message.timestamp = datetime.fromtimestamp(float(raw_message['ts']))
             message.raw = json.dumps(raw_message, ensure_ascii=False)
