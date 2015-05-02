@@ -2,6 +2,11 @@ import peewee as p
 
 db = p.SqliteDatabase('jasmine.db')
 
+def init():
+    db.connect()
+    for model in [User, Channel, Group, Im, Message, UserChannel, UserGroup, ChannelMessage, GroupMessage, ImMessage]:
+        model.create_table(fail_silently=True)
+
 # Common model definition
 class BaseModel(p.Model):
     class Meta:

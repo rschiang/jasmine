@@ -3,3 +3,4 @@ settings.py
 *.pyc
 __pycache__
 *.sqlite
+*.db

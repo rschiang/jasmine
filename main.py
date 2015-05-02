@@ -2,6 +2,7 @@ import slacker
 import settings
 import models as m
 import json
+from datetime import datetime
 
 slack = slacker.Slacker(settings.SLACK_TOKEN)
 
@@ -14,7 +15,7 @@ def update_users():
             user = m.User(identifier=member['id'])
         user.name = member['name']
         user.avatar = member['profile'].get('image_original') or member['profile']['image_192']
-        user.raw = json.dumps(member)
+        user.raw = json.dumps(member, ensure_ascii=False)
         user.save()
 
 def update_channel_users(channel, users, all_users, rel_class):
@@ -29,10 +30,10 @@ def update_channel_users(channel, users, all_users, rel_class):
     for i in to_delete:
         i.delete_instance()
 
-    rel_class.insert_many([{'user': users[i], 'channel': channel} for i in users])
+    rel_class.insert_many([{'user': all_users[i], 'channel': channel} for i in users])
 
 def update_channels():
-    users = { u.identifier : u for u in m.User.select() }
+    users = get_users()
     channels = slack.channels.list().body['channels']
     for raw_channel in channels:
         try:
@@ -40,16 +41,36 @@ def update_channels():
         except m.Channel.DoesNotExist:
             channel = m.Channel(identifier=raw_channel['id'])
         channel.name = raw_channel['name']
-        channel.raw = json.dumps(raw_channel)
+        channel.raw = json.dumps(raw_channel, ensure_ascii=False)
         channel.save()
         update_channel_users(channel, raw_channel['members'], users, m.UserChannel)
+
+def get_users():
+    return { u.identifier : u for u in m.User.select() }
 
 def get_messages(channel, count=None):
     has_more = True
     latest = None
     while has_more:
-        response = slack.channels.history(channel=channel, count=count, latest=latest).body
+        response = slack.channels.history(channel=channel.identifier, count=count, latest=latest).body
         has_more = response['has_more']
-        latest = response['latest']
-        for message in response['messages']:
+        messages = sorted(response['messages'], key=lambda x: x['ts'], reverse=True)
+        for message in messages:
             yield message
+        latest = messages[-1]['ts']
+
+def update_messages(channel):
+    users = get_users()
+    for raw_message in get_messages(channel, count=400):
+        message = m.Message(type=raw_message['type'])
+        message.user = users[raw_message['user']]
+        message.text = raw_message['text']
+        message.timestamp = datetime.fromtimestamp(raw_message['ts'])
+        message.raw = json.dumps(raw_message, ensure_ascii=False)
+        m.ChannelMessage.create(channel=channel, message=message)
+
+def update_all_messages():
+    update_users()
+    update_channels()
+    for channel in m.Channel.select():
+        update_messages(channel)
