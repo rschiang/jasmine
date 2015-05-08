@@ -62,6 +62,19 @@ def update_groups():
         channel.save()
         update_channel_users(channel, raw_channel['members'], users, m.UserGroup)
 
+def update_ims():
+    users = get_users()
+    ims = slack.im.list().body['ims']
+    for raw_channel in ims:
+        try:
+            channel = m.Im.get(m.Im.identifier == raw_channel['id'])
+        except m.Im.DoesNotExist:
+            channel = m.Im(identifier=raw_channel['id'])
+        channel.user = users[raw_channel['user']]
+        channel.raw = json.dumps(raw_channel, ensure_ascii=False)
+        channel.save()
+
+
 def get_messages(channel, count=None):
     has_more = True
     latest = None
@@ -69,11 +82,15 @@ def get_messages(channel, count=None):
         fetch_func = slack.channels.history
     elif isinstance(channel, m.Group):
         fetch_func = slack.groups.history
+    elif isinstance(channel, m.Im):
+        fetch_func = slack.im.history
 
     while has_more:
         response = fetch_func(channel=channel.identifier, count=count, latest=latest).body
         has_more = response['has_more']
         messages = sorted(response['messages'], key=lambda x: x['ts'], reverse=True)
+        if not messages:
+            break
         for message in messages:
             yield message
         latest = messages[-1]['ts']
@@ -84,6 +101,8 @@ def update_messages(channel):
         rel_class = m.ChannelMessage
     elif isinstance(channel, m.Group):
         rel_class = m.GroupMessage
+    elif isinstance(channel, m.Im):
+        rel_class = m.ImMessage
 
     for raw_message in get_messages(channel, count=400):
         try:
@@ -113,4 +132,9 @@ def update_all_messages():
 def update_group_messages():
     update_groups()
     for group in m.Group.select():
-        update_groups(group)
+        update_messages(group)
+
+def update_im_messages():
+    update_ims()
+    for im in m.Im.select():
+        update_messages(im)
