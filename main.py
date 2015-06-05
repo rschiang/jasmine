@@ -8,6 +8,9 @@ from pprint import PrettyPrinter
 slack = slacker.Slacker(settings.SLACK_TOKEN)
 pprint = PrettyPrinter().pprint
 
+def type_name(instance):
+    return instance.__class__.__name__
+
 def update_users():
     members = slack.users.list().body['members']
     for member in members:
@@ -31,7 +34,8 @@ def update_channel_users(channel, users, all_users, rel_class):
     for i in to_delete:
         i.delete_instance()
 
-    rel_class.insert_many([{'user': all_users[i], 'channel': channel} for i in users]).execute()
+    if users:
+        rel_class.insert_many([{'user': all_users[i], 'channel': channel} for i in users]).execute()
 
 def update_channels():
     users = get_users()
@@ -95,8 +99,17 @@ def get_messages(channel, count=None):
             yield message
         latest = messages[-1]['ts']
 
+def get_latest_message(channel):
+    return channel.messages.order_by(m.Message.timestamp.desc()).first()
+
+def get_latest_timestamp(channel):
+    message = get_latest_message(channel)
+    return message.timestamp if message else None
+
 def update_messages(channel):
     users = get_users()
+    oldest = get_latest_timestamp(channel) or datetime.min
+    count = 0
     if isinstance(channel, m.Channel):
         rel_class = m.ChannelMessage
     elif isinstance(channel, m.Group):
@@ -104,9 +117,12 @@ def update_messages(channel):
     elif isinstance(channel, m.Im):
         rel_class = m.ImMessage
 
-    for raw_message in get_messages(channel, count=400):
+    for raw_message in get_messages(channel, count=100):
         try:
             message = m.Message(type=raw_message['type'])
+            timestamp = datetime.fromtimestamp(float(raw_message['ts']))
+            if oldest >= timestamp:
+                break   # We've passed the end
             if 'user' in raw_message:
                 message.user = users[raw_message['user']]
             elif 'comment' in raw_message:
@@ -114,14 +130,16 @@ def update_messages(channel):
             elif 'bot_id' in raw_message:
                 message.user = users.get(raw_message['bot_id'])
             message.text = raw_message['text']
-            message.timestamp = datetime.fromtimestamp(float(raw_message['ts']))
+            message.timestamp = timestamp
             message.raw = json.dumps(raw_message, ensure_ascii=False)
             message.save()
             rel_class.create(channel=channel, message=message)
+            count += 1
         except KeyError:
-            print('⚠️ In channel {}'.format(channel.name))
+            print('⚠️ in {} {}'.format(type_name(channel).lower(), channel.name))
             pprint(raw_message)
             break
+    print('✅  {} new messages in {} {}'.format(count, type_name(channel).lower(), channel.name))
 
 def update_all_messages():
     # update_users()

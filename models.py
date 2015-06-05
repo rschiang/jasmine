@@ -62,6 +62,10 @@ class Im(BaseModel):
     raw = p.TextField()
 
     @property
+    def name(self):
+        return self.user.name
+
+    @property
     def messages(self):
         return Message.select().join(ImMessage).where(ImMessage.channel == self)
 
