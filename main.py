@@ -142,8 +142,7 @@ def update_messages(channel):
     print('✅  {} new messages in {} {}'.format(count, type_name(channel).lower(), channel.name))
 
 def update_all_messages():
-    # update_users()
-    # update_channels()
+    # CHannels need to be updated manually.
     for channel in m.Channel.select():
         update_messages(channel)
 
@@ -156,3 +155,16 @@ def update_im_messages():
     update_ims()
     for im in m.Im.select():
         update_messages(im)
+
+if __name__ == "__main__":
+    steps = (
+        (update_users, 'Users updated.'),
+        (update_channels, 'Channels updated.'),
+        (update_all_messages, 'Channel messages updated.'),
+        (update_group_messages, 'Group messages updated.'),
+        (update_im_messages, 'Private messages updated.'),
+    )
+
+    for func, message in steps:
+        func()
+        print(message)
